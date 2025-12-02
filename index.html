@@ -1,0 +1,1026 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>NEON SWEEPER 3D</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Share+Tech+Mono&display=swap');
+
+        :root {
+            --primary-glow: #00f3ff;
+            --secondary-glow: #bc13fe;
+            --danger-glow: #ff003c;
+            --gold-glow: #ffd700;
+            --bg-dark: #050510;
+            --glass-bg: rgba(255, 255, 255, 0.05);
+            --glass-border: rgba(255, 255, 255, 0.1);
+            --cell-size: 30px;
+        }
+
+        body {
+            background-color: var(--bg-dark);
+            color: white;
+            font-family: 'Share Tech Mono', monospace;
+            overflow: hidden;
+            touch-action: manipulation;
+            background-image: 
+                radial-gradient(circle at 50% 50%, rgba(20, 20, 60, 0.8) 0%, #000 100%),
+                linear-gradient(0deg, rgba(0,243,255,0.03) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(188,19,254,0.03) 1px, transparent 1px);
+            background-size: 100% 100%, 40px 40px, 40px 40px;
+        }
+
+        /* 3D Board Container */
+        #main-scroll {
+            perspective: 1000px;
+            z-index: 0;
+        }
+
+        #game-container {
+            transform-style: preserve-3d;
+            position: relative;
+            padding: 60px 40px;
+            min-height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            pointer-events: none; 
+        }
+
+        .board-wrapper {
+            /* 固定の変形を適用:
+               translateZ(150px): クリック判定のために手前に出す
+               rotateX(20deg): 適度な見下ろし角度
+               scale(0.9): 画面に収まりやすく調整
+            */
+            transform: translateZ(150px) rotateX(20deg) scale(0.9);
+            transform-style: preserve-3d;
+            /* transitionは scale等の変更時のみ効くように調整 */
+            transition: transform 0.3s ease-out;
+            box-shadow: 0 50px 100px -20px rgba(0, 0, 0, 0.7);
+            pointer-events: auto;
+        }
+
+        /* Neon Text Effects */
+        .neon-text {
+            text-shadow: 0 0 5px var(--primary-glow), 0 0 10px var(--primary-glow);
+        }
+        .neon-title {
+            font-family: 'Orbitron', sans-serif;
+            text-shadow: 
+                0 0 5px #fff,
+                0 0 10px #fff,
+                0 0 20px var(--secondary-glow),
+                0 0 40px var(--secondary-glow),
+                0 0 80px var(--secondary-glow);
+        }
+
+        /* Cell Styling */
+        .cell {
+            width: var(--cell-size);
+            height: var(--cell-size);
+            background: rgba(30, 30, 40, 0.6);
+            border: 1px solid var(--glass-border);
+            backdrop-filter: blur(4px);
+            position: relative;
+            cursor: pointer;
+            transition: all 0.15s ease;
+            transform-style: preserve-3d;
+            font-family: 'Orbitron', sans-serif;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 14px;
+            user-select: none;
+        }
+
+        /* Unopened "Raised" Effect */
+        .cell.closed {
+            background: linear-gradient(135deg, rgba(255,255,255,0.1) 0%, rgba(255,255,255,0.01) 100%);
+            box-shadow: 
+                inset 1px 1px 0px rgba(255,255,255,0.2),
+                inset -1px -1px 0px rgba(0,0,0,0.5),
+                0 4px 8px rgba(0,0,0,0.3);
+            transform: translateZ(5px);
+        }
+
+        .cell.closed:hover {
+            background: rgba(255, 255, 255, 0.15);
+            transform: translateZ(15px); /* Slightly more pop */
+            box-shadow: 0 0 15px var(--primary-glow);
+            z-index: 10;
+        }
+
+        .cell.opened {
+            background: rgba(0, 0, 0, 0.4);
+            transform: translateZ(0px);
+            box-shadow: inset 0 0 10px rgba(0,0,0,0.8);
+            border: 1px solid rgba(255,255,255,0.05);
+        }
+
+        .cell.bomb {
+            background: rgba(255, 0, 60, 0.4);
+            box-shadow: inset 0 0 20px var(--danger-glow);
+        }
+
+        /* Number Colors with Glow */
+        .num-1 { color: #00f3ff; text-shadow: 0 0 5px #00f3ff; }
+        .num-2 { color: #bc13fe; text-shadow: 0 0 5px #bc13fe; }
+        .num-3 { color: #ff003c; text-shadow: 0 0 5px #ff003c; }
+        .num-4 { color: #ffd700; text-shadow: 0 0 5px #ffd700; }
+        .num-5 { color: #ff8800; text-shadow: 0 0 5px #ff8800; }
+        .num-6 { color: #00ff9d; text-shadow: 0 0 5px #00ff9d; }
+        .num-7 { color: #ffffff; text-shadow: 0 0 5px #ffffff; }
+        .num-8 { color: #ff00ff; text-shadow: 0 0 5px #ff00ff; }
+
+        /* UI Elements */
+        .glass-panel {
+            background: var(--glass-bg);
+            backdrop-filter: blur(10px);
+            border: 1px solid var(--glass-border);
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+        }
+
+        .btn-neon {
+            background: transparent;
+            border: 1px solid var(--primary-glow);
+            color: var(--primary-glow);
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            transition: all 0.3s;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .btn-neon:hover, .btn-neon.active {
+            background: var(--primary-glow);
+            color: #000;
+            box-shadow: 0 0 20px var(--primary-glow);
+        }
+        
+        .btn-hell {
+            border-color: var(--danger-glow);
+            color: var(--danger-glow);
+        }
+        .btn-hell:hover, .btn-hell.active {
+            background: var(--danger-glow);
+            box-shadow: 0 0 30px var(--danger-glow);
+            color: white;
+        }
+
+        /* Skill Bar Styles */
+        .skill-container {
+            width: 100%;
+            max-width: 300px;
+            height: 8px;
+            background: rgba(0,0,0,0.5);
+            border: 1px solid #333;
+            border-radius: 4px;
+            overflow: hidden;
+            margin-top: 5px;
+            position: relative;
+        }
+        .skill-fill {
+            height: 100%;
+            width: 0%;
+            background: linear-gradient(90deg, var(--primary-glow), var(--secondary-glow));
+            transition: width 0.3s ease-out;
+            box-shadow: 0 0 10px var(--primary-glow);
+        }
+        .skill-ready {
+            animation: pulse-glow 1s infinite alternate;
+        }
+        @keyframes pulse-glow {
+            from { box-shadow: 0 0 5px var(--primary-glow); }
+            to { box-shadow: 0 0 20px var(--primary-glow), 0 0 10px #fff; }
+        }
+
+        .btn-skill {
+            background: rgba(0, 0, 0, 0.8);
+            border: 1px solid #333;
+            color: #555;
+            pointer-events: none;
+            transition: all 0.3s;
+        }
+        .btn-skill.ready {
+            border-color: var(--gold-glow);
+            color: var(--gold-glow);
+            pointer-events: auto;
+            cursor: pointer;
+            box-shadow: 0 0 15px rgba(255, 215, 0, 0.3);
+            background: rgba(255, 215, 0, 0.1);
+        }
+        .btn-skill.ready:hover {
+            background: var(--gold-glow);
+            color: #000;
+            box-shadow: 0 0 30px var(--gold-glow);
+        }
+
+        /* Animations */
+        @keyframes shake {
+            0% { transform: translate(1px, 1px) rotate(0deg); }
+            10% { transform: translate(-1px, -2px) rotate(-1deg); }
+            20% { transform: translate(-3px, 0px) rotate(1deg); }
+            30% { transform: translate(3px, 2px) rotate(0deg); }
+            40% { transform: translate(1px, -1px) rotate(1deg); }
+            50% { transform: translate(-1px, 2px) rotate(-1deg); }
+            60% { transform: translate(-3px, 1px) rotate(0deg); }
+            70% { transform: translate(3px, 1px) rotate(-1deg); }
+            80% { transform: translate(-1px, -1px) rotate(1deg); }
+            90% { transform: translate(1px, 2px) rotate(0deg); }
+            100% { transform: translate(1px, -2px) rotate(-1deg); }
+        }
+
+        .shake-screen {
+            animation: shake 0.5s;
+            animation-iteration-count: 1;
+        }
+
+        @keyframes float {
+            0% { transform: translateY(0px); }
+            50% { transform: translateY(-10px); }
+            100% { transform: translateY(0px); }
+        }
+
+        /* Combo Text */
+        .combo-text {
+            position: absolute;
+            font-family: 'Orbitron', sans-serif;
+            font-weight: 900;
+            font-size: 2rem;
+            color: var(--gold-glow);
+            text-shadow: 0 0 10px var(--gold-glow);
+            pointer-events: none;
+            animation: float-up 1s ease-out forwards;
+            z-index: 50;
+        }
+        @keyframes float-up {
+            0% { transform: translateY(0) scale(0.5); opacity: 0; }
+            20% { transform: translateY(-20px) scale(1.2); opacity: 1; }
+            100% { transform: translateY(-50px) scale(1); opacity: 0; }
+        }
+
+        /* Particle styles for explosions */
+        .particle {
+            position: absolute;
+            pointer-events: none;
+            border-radius: 50%;
+            animation: pop 0.6s ease-out forwards;
+        }
+
+        @keyframes pop {
+            0% { transform: translate(0, 0) scale(1); opacity: 1; }
+            100% { transform: translate(var(--tx), var(--ty)) scale(0); opacity: 0; }
+        }
+
+        /* Custom Scrollbar */
+        #main-scroll::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        #main-scroll::-webkit-scrollbar-track {
+            background: #050510; 
+        }
+        #main-scroll::-webkit-scrollbar-thumb {
+            background: #333; 
+            border-radius: 4px;
+        }
+        #main-scroll::-webkit-scrollbar-thumb:hover {
+            background: var(--primary-glow); 
+        }
+
+        /* Hell Mode Specifics */
+        body.hell-mode {
+            --primary-glow: #ff003c;
+            --secondary-glow: #ff5e00;
+            background-image: 
+                radial-gradient(circle at 50% 50%, rgba(60, 20, 20, 0.8) 0%, #000 100%),
+                linear-gradient(0deg, rgba(255, 0, 60, 0.05) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(255, 94, 0, 0.05) 1px, transparent 1px);
+        }
+    </style>
+</head>
+<body class="flex flex-col h-screen w-full select-none">
+
+    <!-- Header Area -->
+    <header class="flex-none w-full z-10 p-4 pb-2 bg-gradient-to-b from-black/80 to-transparent pointer-events-none">
+        <div class="flex flex-col md:flex-row justify-between items-center max-w-7xl mx-auto gap-4 pointer-events-auto">
+            <div class="glass-panel px-6 py-2 rounded-xl">
+                <h1 class="text-3xl md:text-4xl neon-title tracking-tighter text-center md:text-left">NEON<span class="text-xs md:text-sm block font-normal tracking-widest opacity-80">MINESWEEPER</span></h1>
+            </div>
+            
+            <div class="flex gap-4">
+                <div class="glass-panel px-4 py-2 rounded-lg text-center min-w-[90px]">
+                    <div class="text-xs text-gray-400 uppercase">Score</div>
+                    <div id="score" class="text-xl md:text-2xl font-bold text-yellow-400" style="text-shadow: 0 0 10px gold;">00000</div>
+                </div>
+                <div class="glass-panel px-4 py-2 rounded-lg text-center min-w-[90px]">
+                    <div class="text-xs text-gray-400 uppercase">Time</div>
+                    <div id="timer" class="text-xl md:text-2xl font-bold neon-text">000</div>
+                </div>
+                <div class="glass-panel px-4 py-2 rounded-lg text-center min-w-[90px]">
+                    <div class="text-xs text-gray-400 uppercase">Mines</div>
+                    <div id="mines-left" class="text-xl md:text-2xl font-bold text-red-500" style="text-shadow: 0 0 10px red;">000</div>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Game Area -->
+    <main id="main-scroll" class="flex-grow overflow-auto relative w-full z-0 bg-transparent">
+        <div id="game-container">
+            <div id="board" class="board-wrapper grid gap-[1px] bg-white/10 p-2 rounded-lg backdrop-blur-sm border border-white/10">
+                <!-- Cells generated by JS -->
+            </div>
+        </div>
+    </main>
+
+    <!-- Footer Controls -->
+    <footer class="flex-none w-full z-10 p-4 pt-2 bg-gradient-to-t from-black via-black/90 to-transparent pointer-events-none">
+        <div class="flex flex-col items-center pointer-events-auto mb-4">
+             <!-- Skill Area -->
+             <div class="flex flex-col items-center w-full max-w-md mb-2">
+                <div class="flex justify-between w-full px-1 mb-1">
+                    <span class="text-[10px] text-gray-400 tracking-widest">HACK GAUGE</span>
+                    <span id="skill-text" class="text-[10px] text-gray-400 tracking-widest">CHARGING...</span>
+                </div>
+                <div class="skill-container">
+                    <div id="skill-fill" class="skill-fill"></div>
+                </div>
+                <button id="btn-skill" onclick="activateSkill()" class="btn-skill mt-2 px-6 py-1 rounded text-sm font-bold tracking-widest w-full">
+                    <i class="fas fa-satellite-dish mr-2"></i>ACTIVATE RADAR
+                </button>
+            </div>
+        </div>
+
+        <div class="flex flex-wrap justify-center gap-2 max-w-4xl mx-auto pointer-events-auto">
+            <button onclick="setDifficulty('beginner')" class="btn-neon px-3 py-2 rounded text-xs md:text-sm font-bold" id="btn-beg">初級</button>
+            <button onclick="setDifficulty('intermediate')" class="btn-neon px-3 py-2 rounded text-xs md:text-sm font-bold" id="btn-int">中級</button>
+            <button onclick="setDifficulty('advanced')" class="btn-neon px-3 py-2 rounded text-xs md:text-sm font-bold" id="btn-adv">上級</button>
+            <button onclick="setDifficulty('hell')" class="btn-hell px-3 py-2 rounded text-xs md:text-sm font-bold border border-red-500 text-red-500 hover:bg-red-600" id="btn-hell">地獄</button>
+            
+            <div class="w-full md:w-auto flex justify-center gap-2 mt-2 md:mt-0">
+                <button onclick="toggleAudio()" id="audio-btn" class="glass-panel px-4 py-2 rounded text-gray-400 hover:text-white transition"><i class="fas fa-volume-up"></i></button>
+                <button onclick="resetGame()" class="glass-panel px-6 py-2 rounded text-white hover:bg-white hover:text-black transition font-bold"><i class="fas fa-redo mr-2"></i>RESTART</button>
+            </div>
+        </div>
+    </footer>
+
+    <!-- Modal for Win/Lose -->
+    <div id="modal" class="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-md opacity-0 pointer-events-none transition-opacity duration-300">
+        <div class="glass-panel p-8 rounded-2xl text-center max-w-md w-full transform scale-90 transition-transform duration-300 m-4" id="modal-content">
+            <h2 id="modal-title" class="text-4xl md:text-5xl font-black mb-2 neon-title">GAME OVER</h2>
+            <p id="modal-msg" class="text-xl mb-6 text-gray-300">System Failure</p>
+            <div id="modal-actions" class="flex justify-center gap-4">
+                <button onclick="resetGame()" class="btn-neon px-8 py-3 rounded text-xl font-bold">RETRY</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        /* --- Audio System (Synthesizer) --- */
+        class AudioSynth {
+            constructor() {
+                this.ctx = null;
+                this.enabled = true;
+                this.masterGain = null;
+            }
+
+            init() {
+                if (!this.ctx) {
+                    this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+                    this.masterGain = this.ctx.createGain();
+                    this.masterGain.gain.value = 0.3; // Default volume
+                    this.masterGain.connect(this.ctx.destination);
+                }
+                if (this.ctx.state === 'suspended') {
+                    this.ctx.resume();
+                }
+            }
+
+            playTone(freq, type, duration, vol = 1) {
+                if (!this.enabled || !this.ctx) return;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                
+                osc.type = type;
+                osc.frequency.setValueAtTime(freq, this.ctx.currentTime);
+                
+                gain.gain.setValueAtTime(vol, this.ctx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + duration);
+
+                osc.connect(gain);
+                gain.connect(this.masterGain);
+                
+                osc.start();
+                osc.stop(this.ctx.currentTime + duration);
+            }
+
+            playNoise(duration) {
+                if (!this.enabled || !this.ctx) return;
+                const bufferSize = this.ctx.sampleRate * duration;
+                const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
+                const data = buffer.getChannelData(0);
+                
+                for (let i = 0; i < bufferSize; i++) {
+                    data[i] = Math.random() * 2 - 1;
+                }
+
+                const noise = this.ctx.createBufferSource();
+                noise.buffer = buffer;
+                const gain = this.ctx.createGain();
+                
+                // Lowpass filter for explosion thud
+                const filter = this.ctx.createBiquadFilter();
+                filter.type = 'lowpass';
+                filter.frequency.value = 1000;
+
+                gain.gain.setValueAtTime(1, this.ctx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + duration);
+
+                noise.connect(filter);
+                filter.connect(gain);
+                gain.connect(this.masterGain);
+                
+                noise.start();
+            }
+
+            sfxClick() { this.playTone(800, 'sine', 0.1, 0.5); }
+            sfxFlag() { this.playTone(400, 'square', 0.1, 0.3); }
+            sfxSkill() { this.playTone(1200, 'sawtooth', 0.4, 0.3); this.playTone(1500, 'sine', 0.6, 0.2); }
+            sfxCombo(count) { 
+                const baseFreq = 440 + (count * 50);
+                this.playTone(baseFreq, 'triangle', 0.2, 0.4); 
+            }
+            sfxExplode() { this.playNoise(0.8); this.playTone(100, 'sawtooth', 0.5, 0.8); }
+            sfxWin() {
+                const now = this.ctx.currentTime;
+                [523.25, 659.25, 783.99, 1046.50].forEach((freq, i) => {
+                    setTimeout(() => this.playTone(freq, 'triangle', 0.4, 0.4), i * 100);
+                });
+            }
+        }
+
+        const audio = new AudioSynth();
+        let audioEnabled = true;
+
+        /* --- Game Configuration --- */
+        // openBonus: 自動でマスが開いた時（連鎖）の1マスあたりの追加チャージ量
+        const LEVELS = {
+            beginner: { rows: 9, cols: 9, mines: 10, name: 'BEGINNER', chargeRate: 15, openBonus: 2 },
+            intermediate: { rows: 16, cols: 16, mines: 40, name: 'INTERMEDIATE', chargeRate: 5, openBonus: 1 },
+            advanced: { rows: 16, cols: 30, mines: 99, name: 'ADVANCED', chargeRate: 3, openBonus: 0.8 },
+            hell: { rows: 20, cols: 30, mines: 150, name: 'HELL MODE', chargeRate: 2, openBonus: 0.5 }
+        };
+
+        let currentLevel = LEVELS.beginner;
+        let board = [];
+        let gameActive = false;
+        let mineCount = 0;
+        let flagsUsed = 0;
+        let timerInterval;
+        let timeElapsed = 0;
+        let firstClick = true;
+        let longPressTimer;
+        
+        // New Features Variables
+        let hackGauge = 0;
+        const HACK_MAX = 100;
+        let score = 0;
+        let comboCount = 0;
+        let lastClickTime = 0;
+        const COMBO_WINDOW = 1500; // ms
+
+        /* --- DOM Elements --- */
+        const boardEl = document.getElementById('board');
+        const timerEl = document.getElementById('timer');
+        const scoreEl = document.getElementById('score');
+        const minesLeftEl = document.getElementById('mines-left');
+        const modal = document.getElementById('modal');
+        const modalContent = document.getElementById('modal-content');
+        const skillFill = document.getElementById('skill-fill');
+        const btnSkill = document.getElementById('btn-skill');
+        const skillText = document.getElementById('skill-text');
+
+        /* --- Initialization --- */
+        function init() {
+            setDifficulty('beginner');
+        }
+
+        function setDifficulty(levelKey) {
+            currentLevel = LEVELS[levelKey];
+            
+            // UI Updates for Difficulty Buttons
+            document.querySelectorAll('.btn-neon, .btn-hell').forEach(b => b.classList.remove('active'));
+            document.getElementById(levelKey === 'hell' ? 'btn-hell' : `btn-${levelKey.substring(0,3)}`).classList.add('active');
+
+            // Hell Mode Theme
+            if (levelKey === 'hell') {
+                document.body.classList.add('hell-mode');
+            } else {
+                document.body.classList.remove('hell-mode');
+            }
+
+            resetGame();
+        }
+
+        function resetGame() {
+            audio.init(); // Initialize audio context on first interaction if needed
+            gameActive = true;
+            firstClick = true;
+            board = [];
+            flagsUsed = 0;
+            timeElapsed = 0;
+            hackGauge = 0;
+            score = 0;
+            comboCount = 0;
+            
+            clearInterval(timerInterval);
+            timerEl.innerText = '000';
+            updateScore(0);
+            updateMineCounter();
+            updateSkillUI();
+            hideModal();
+            createBoard();
+        }
+
+        function createBoard() {
+            boardEl.innerHTML = '';
+            const { rows, cols } = currentLevel;
+            
+            // Responsive sizing logic
+            let cellSize = 30;
+            if (window.innerWidth < 600) cellSize = 24; 
+            if (cols > 20 && window.innerWidth < 800) cellSize = 22;
+            if (cols > 20 && window.innerWidth < 480) cellSize = 18; // Smaller for mobile hell mode
+
+            document.documentElement.style.setProperty('--cell-size', `${cellSize}px`);
+            
+            boardEl.style.gridTemplateColumns = `repeat(${cols}, var(--cell-size))`;
+
+            for (let r = 0; r < rows; r++) {
+                board[r] = [];
+                for (let c = 0; c < cols; c++) {
+                    const cell = document.createElement('div');
+                    cell.className = 'cell closed';
+                    cell.dataset.r = r;
+                    cell.dataset.c = c;
+                    
+                    // Event Listeners
+                    cell.addEventListener('mousedown', handleMouseDown);
+                    cell.addEventListener('mouseup', handleMouseUp);
+                    cell.addEventListener('touchstart', handleTouchStart, {passive: false});
+                    cell.addEventListener('touchend', handleTouchEnd);
+                    cell.addEventListener('contextmenu', (e) => {
+                        e.preventDefault();
+                        toggleFlag(r, c);
+                    });
+
+                    boardEl.appendChild(cell);
+                    board[r][c] = {
+                        isMine: false,
+                        isOpen: false,
+                        isFlagged: false,
+                        element: cell,
+                        neighborMines: 0
+                    };
+                }
+            }
+        }
+
+        /* --- Input Handling --- */
+        function handleMouseDown(e) {
+            if (!gameActive) return;
+            // Visual feedback logic here
+        }
+
+        function handleMouseUp(e) {
+            if (!gameActive) return;
+            const r = parseInt(e.target.closest('.cell').dataset.r);
+            const c = parseInt(e.target.closest('.cell').dataset.c);
+
+            if (e.button === 0) { // Left Click
+                if (board[r][c].isFlagged) return;
+                clickCell(r, c);
+            }
+        }
+
+        // Touch handling for mobile long-press
+        function handleTouchStart(e) {
+            if (!gameActive) return;
+            const r = parseInt(e.target.closest('.cell').dataset.r);
+            const c = parseInt(e.target.closest('.cell').dataset.c);
+            
+            longPressTimer = setTimeout(() => {
+                toggleFlag(r, c);
+                audio.sfxFlag();
+                if (navigator.vibrate) navigator.vibrate(50);
+            }, 400); // 400ms for long press
+        }
+
+        function handleTouchEnd(e) {
+            clearTimeout(longPressTimer);
+        }
+        
+        // Use a wrapper for click on mobile to handle the "tap" part if touchstart didn't flag
+        boardEl.addEventListener('click', (e) => {
+            if(!gameActive) return;
+            const cellEl = e.target.closest('.cell');
+            if (!cellEl) return;
+            const r = parseInt(cellEl.dataset.r);
+            const c = parseInt(cellEl.dataset.c);
+            
+            if (!board[r][c].isFlagged && !board[r][c].isOpen) {
+                 clickCell(r, c);
+            }
+        });
+
+
+        /* --- Game Logic --- */
+        function clickCell(r, c) {
+            if (board[r][c].isOpen || board[r][c].isFlagged) return;
+
+            if (firstClick) {
+                placeMines(r, c);
+                startTimer();
+                firstClick = false;
+            }
+
+            if (board[r][c].isMine) {
+                triggerGameOver(r, c);
+            } else {
+                const now = Date.now();
+                if (now - lastClickTime < COMBO_WINDOW) {
+                    comboCount++;
+                } else {
+                    comboCount = 1;
+                }
+                lastClickTime = now;
+                
+                if (comboCount > 1) {
+                    showCombo(board[r][c].element, comboCount);
+                    audio.sfxCombo(comboCount);
+                    addScore(comboCount * 50);
+                } else {
+                    audio.sfxClick();
+                    addScore(10);
+                }
+
+                // Charge Gauge (Click Base)
+                chargeSkill(currentLevel.chargeRate); 
+
+                openCell(r, c);
+                checkWin();
+            }
+        }
+
+        function placeMines(safeR, safeC) {
+            let minesPlaced = 0;
+            const { rows, cols, mines } = currentLevel;
+            
+            while (minesPlaced < mines) {
+                const r = Math.floor(Math.random() * rows);
+                const c = Math.floor(Math.random() * cols);
+                
+                // Don't place mine on the first clicked cell or its immediate neighbors (fair start)
+                if (!board[r][c].isMine && (Math.abs(r - safeR) > 1 || Math.abs(c - safeC) > 1)) {
+                    board[r][c].isMine = true;
+                    minesPlaced++;
+                }
+            }
+            
+            // Calculate neighbors
+            for (let r = 0; r < rows; r++) {
+                for (let c = 0; c < cols; c++) {
+                    if (!board[r][c].isMine) {
+                        board[r][c].neighborMines = countNeighborMines(r, c);
+                    }
+                }
+            }
+        }
+
+        function countNeighborMines(r, c) {
+            let count = 0;
+            for (let i = -1; i <= 1; i++) {
+                for (let j = -1; j <= 1; j++) {
+                    if (i === 0 && j === 0) continue;
+                    const nr = r + i, nc = c + j;
+                    if (nr >= 0 && nr < currentLevel.rows && nc >= 0 && nc < currentLevel.cols) {
+                        if (board[nr][nc].isMine) count++;
+                    }
+                }
+            }
+            return count;
+        }
+
+        function openCell(r, c) {
+            const cellData = board[r][c];
+            if (cellData.isOpen || cellData.isFlagged) return;
+
+            cellData.isOpen = true;
+            cellData.element.classList.remove('closed');
+            cellData.element.classList.add('opened');
+            
+            // 連鎖ボーナス: 開いた数だけチャージ
+            chargeSkill(currentLevel.openBonus || 0.5);
+
+            if (cellData.neighborMines > 0) {
+                cellData.element.textContent = cellData.neighborMines;
+                cellData.element.classList.add(`num-${cellData.neighborMines}`);
+            } else {
+                // Empty cell, flood fill
+                for (let i = -1; i <= 1; i++) {
+                    for (let j = -1; j <= 1; j++) {
+                        const nr = r + i, nc = c + j;
+                        if (nr >= 0 && nr < currentLevel.rows && nc >= 0 && nc < currentLevel.cols) {
+                            openCell(nr, nc);
+                        }
+                    }
+                }
+            }
+        }
+
+        function toggleFlag(r, c) {
+            const cell = board[r][c];
+            if (cell.isOpen) return;
+
+            cell.isFlagged = !cell.isFlagged;
+            if (cell.isFlagged) {
+                cell.element.innerHTML = '<i class="fas fa-flag text-red-500 text-xs"></i>';
+                flagsUsed++;
+            } else {
+                cell.element.innerHTML = '';
+                flagsUsed--;
+            }
+            audio.sfxFlag();
+            updateMineCounter();
+        }
+
+        function updateMineCounter() {
+            const left = currentLevel.mines - flagsUsed;
+            minesLeftEl.innerText = left.toString().padStart(3, '0');
+        }
+
+        function startTimer() {
+            timeElapsed = 0;
+            timerInterval = setInterval(() => {
+                timeElapsed++;
+                timerEl.innerText = timeElapsed.toString().padStart(3, '0');
+                if (timeElapsed >= 999) clearInterval(timerInterval);
+            }, 1000);
+        }
+
+        /* --- New Features Logic --- */
+        function chargeSkill(amount) {
+            if (!gameActive) return; // Prevent charge after game over
+            hackGauge = Math.min(HACK_MAX, hackGauge + amount);
+            updateSkillUI();
+        }
+
+        function updateSkillUI() {
+            skillFill.style.width = `${hackGauge}%`;
+            
+            if (hackGauge >= HACK_MAX) {
+                btnSkill.classList.add('ready');
+                skillText.innerText = "READY TO HACK";
+                skillText.classList.add('text-yellow-400');
+                skillFill.classList.add('skill-ready');
+            } else {
+                btnSkill.classList.remove('ready');
+                skillText.innerText = "CHARGING...";
+                skillText.classList.remove('text-yellow-400');
+                skillFill.classList.remove('skill-ready');
+            }
+        }
+
+        function activateSkill() {
+            if (!gameActive || hackGauge < HACK_MAX) return;
+            
+            hackGauge = 0;
+            updateSkillUI();
+            audio.sfxSkill();
+
+            // Find safe closed cells
+            const safeCells = [];
+            const { rows, cols } = currentLevel;
+            
+            for (let r = 0; r < rows; r++) {
+                for (let c = 0; c < cols; c++) {
+                    if (!board[r][c].isOpen && !board[r][c].isMine && !board[r][c].isFlagged) {
+                        safeCells.push({r, c});
+                    }
+                }
+            }
+
+            // Reveal up to 5 random safe cells
+            const revealCount = Math.min(5, safeCells.length);
+            for (let i = 0; i < revealCount; i++) {
+                const idx = Math.floor(Math.random() * safeCells.length);
+                const target = safeCells.splice(idx, 1)[0];
+                
+                // Visual effect for radar
+                const el = board[target.r][target.c].element;
+                el.style.boxShadow = "0 0 20px #00ff00";
+                setTimeout(() => {
+                    openCell(target.r, target.c);
+                    el.style.boxShadow = "";
+                    checkWin();
+                }, i * 100);
+            }
+            
+            addScore(500);
+            showModal('SYSTEM HACKED', 'Safe zones revealed.', 'text-yellow-400', 'neon-title', false); // Pass false to hide buttons
+            setTimeout(hideModal, 1500); // Temporary modal
+        }
+
+        function addScore(amount) {
+            score += amount;
+            updateScore(score);
+        }
+
+        function updateScore(val) {
+            scoreEl.innerText = val.toString().padStart(5, '0');
+        }
+
+        function showCombo(element, count) {
+            const el = document.createElement('div');
+            el.className = 'combo-text';
+            el.innerText = `${count} COMBO!`;
+            
+            const rect = element.getBoundingClientRect();
+            el.style.left = `${rect.left}px`;
+            el.style.top = `${rect.top}px`;
+            
+            document.body.appendChild(el);
+            setTimeout(() => el.remove(), 1000);
+        }
+
+        /* --- Game End States --- */
+        function checkWin() {
+            let closedNonMines = 0;
+            for (let r = 0; r < currentLevel.rows; r++) {
+                for (let c = 0; c < currentLevel.cols; c++) {
+                    if (!board[r][c].isMine && !board[r][c].isOpen) {
+                        closedNonMines++;
+                    }
+                }
+            }
+            if (closedNonMines === 0) {
+                gameWin();
+            }
+        }
+
+        function gameWin() {
+            gameActive = false;
+            clearInterval(timerInterval);
+            audio.sfxWin();
+            
+            // Time Bonus
+            const timeBonus = Math.max(0, (1000 - timeElapsed) * 10);
+            addScore(timeBonus);
+
+            // Auto flag remaining mines
+            for (let r = 0; r < currentLevel.rows; r++) {
+                for (let c = 0; c < currentLevel.cols; c++) {
+                    if (board[r][c].isMine) {
+                        board[r][c].element.innerHTML = '<i class="fas fa-flag text-green-400"></i>';
+                        board[r][c].element.style.borderColor = '#00ff00';
+                    }
+                }
+            }
+            
+            createConfetti();
+            showModal('SYSTEM CLEARED', `Score: ${score}`, 'text-green-400', 'neon-title');
+        }
+
+        function triggerGameOver(hitR, hitC) {
+            gameActive = false;
+            clearInterval(timerInterval);
+            audio.sfxExplode();
+
+            // Shake screen
+            document.body.classList.add('shake-screen');
+            setTimeout(() => document.body.classList.remove('shake-screen'), 500);
+
+            // Reveal all mines
+            for (let r = 0; r < currentLevel.rows; r++) {
+                for (let c = 0; c < currentLevel.cols; c++) {
+                    const cell = board[r][c];
+                    if (cell.isMine) {
+                        // Delay reveal for effect
+                        setTimeout(() => {
+                            cell.element.classList.remove('closed');
+                            cell.element.classList.add('bomb');
+                            cell.element.innerHTML = '<i class="fas fa-bomb animate-pulse"></i>';
+                            if (r === hitR && c === hitC) {
+                                cell.element.style.background = 'red';
+                                cell.element.style.boxShadow = '0 0 30px red';
+                                createExplosion(cell.element);
+                            }
+                        }, Math.random() * 500);
+                    } else if (cell.isFlagged) {
+                        // Wrong flag
+                        cell.element.innerHTML = '<i class="fas fa-times text-red-500"></i>';
+                        cell.element.style.background = '#300';
+                    }
+                }
+            }
+            
+            setTimeout(() => {
+                showModal('CRITICAL ERROR', 'System compromised.', 'text-red-500', 'neon-title');
+            }, 1000);
+        }
+
+        /* --- Visual FX --- */
+        function createExplosion(element) {
+            const rect = element.getBoundingClientRect();
+            const colors = ['#ff0000', '#ffaa00', '#ffff00'];
+            for (let i = 0; i < 20; i++) {
+                const particle = document.createElement('div');
+                particle.classList.add('particle');
+                const size = Math.random() * 6 + 2;
+                particle.style.width = `${size}px`;
+                particle.style.height = `${size}px`;
+                particle.style.background = colors[Math.floor(Math.random() * colors.length)];
+                particle.style.left = `${rect.left + rect.width/2}px`;
+                particle.style.top = `${rect.top + rect.height/2}px`;
+                
+                const angle = Math.random() * Math.PI * 2;
+                const dist = Math.random() * 50 + 20;
+                particle.style.setProperty('--tx', `${Math.cos(angle) * dist}px`);
+                particle.style.setProperty('--ty', `${Math.sin(angle) * dist}px`);
+                
+                document.body.appendChild(particle);
+                setTimeout(() => particle.remove(), 600);
+            }
+        }
+
+        function createConfetti() {
+            const colors = ['#00f3ff', '#bc13fe', '#ffd700'];
+            for (let i = 0; i < 100; i++) {
+                setTimeout(() => {
+                    const particle = document.createElement('div');
+                    particle.classList.add('particle');
+                    const size = Math.random() * 8 + 4;
+                    particle.style.width = `${size}px`;
+                    particle.style.height = `${size}px`;
+                    particle.style.background = colors[Math.floor(Math.random() * colors.length)];
+                    particle.style.left = `${window.innerWidth / 2}px`;
+                    particle.style.top = `${window.innerHeight / 2}px`;
+                    particle.style.zIndex = '200';
+                    
+                    const angle = Math.random() * Math.PI * 2;
+                    const dist = Math.random() * window.innerHeight * 0.5;
+                    particle.style.setProperty('--tx', `${Math.cos(angle) * dist}px`);
+                    particle.style.setProperty('--ty', `${Math.sin(angle) * dist}px`);
+                    
+                    document.body.appendChild(particle);
+                    setTimeout(() => particle.remove(), 600);
+                }, i * 10);
+            }
+        }
+
+        function showModal(title, msg, colorClass, titleFontClass, showButton = true) {
+            const modalTitle = document.getElementById('modal-title');
+            modalTitle.innerText = title;
+            modalTitle.className = `text-5xl font-black mb-2 ${colorClass} ${titleFontClass}`;
+            document.getElementById('modal-msg').innerText = msg;
+            
+            const actions = document.getElementById('modal-actions');
+            if (actions) {
+                actions.style.display = showButton ? 'flex' : 'none';
+            }
+            
+            modal.style.opacity = '1';
+            modal.style.pointerEvents = 'auto';
+            modalContent.classList.remove('scale-90');
+            modalContent.classList.add('scale-100');
+        }
+
+        function hideModal() {
+            modal.style.opacity = '0';
+            modal.style.pointerEvents = 'none';
+            modalContent.classList.remove('scale-100');
+            modalContent.classList.add('scale-90');
+        }
+
+        function toggleAudio() {
+            audioEnabled = !audioEnabled;
+            audio.enabled = audioEnabled;
+            const btn = document.getElementById('audio-btn');
+            btn.innerHTML = audioEnabled ? '<i class="fas fa-volume-up"></i>' : '<i class="fas fa-volume-mute"></i>';
+            btn.classList.toggle('text-white', audioEnabled);
+            btn.classList.toggle('text-gray-600', !audioEnabled);
+            if (audioEnabled) audio.init();
+        }
+
+        // Start
+        init();
+
+    </script>
+</body>
+</html>
