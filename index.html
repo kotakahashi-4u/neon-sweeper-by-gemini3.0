@@ -486,6 +486,7 @@
         let timeElapsed = 0;
         let firstClick = true;
         let longPressTimer;
+        let isLongPress = false; // Add state to track if long press occurred
         
         // New Features Variables
         let hackGauge = 0;
@@ -538,6 +539,7 @@
             hackGauge = 0;
             score = 0;
             comboCount = 0;
+            isLongPress = false;
             
             clearInterval(timerInterval);
             timerEl.innerText = '000';
@@ -575,6 +577,7 @@
                     cell.addEventListener('mouseup', handleMouseUp);
                     cell.addEventListener('touchstart', handleTouchStart, {passive: false});
                     cell.addEventListener('touchend', handleTouchEnd);
+                    cell.addEventListener('touchmove', handleTouchMove, {passive: true}); // Add move handler
                     cell.addEventListener('contextmenu', (e) => {
                         e.preventDefault();
                         toggleFlag(r, c);
@@ -612,18 +615,30 @@
         // Touch handling for mobile long-press
         function handleTouchStart(e) {
             if (!gameActive) return;
+            isLongPress = false; // Reset long press state
             const r = parseInt(e.target.closest('.cell').dataset.r);
             const c = parseInt(e.target.closest('.cell').dataset.c);
             
             longPressTimer = setTimeout(() => {
+                isLongPress = true; // Mark that long press action triggered
                 toggleFlag(r, c);
-                audio.sfxFlag();
+                // audio.sfxFlag(); // ToggleFlag inside calls sfxFlag
                 if (navigator.vibrate) navigator.vibrate(50);
             }, 400); // 400ms for long press
         }
 
+        function handleTouchMove(e) {
+            // If finger moves, cancel long press
+            clearTimeout(longPressTimer);
+        }
+
         function handleTouchEnd(e) {
             clearTimeout(longPressTimer);
+            if (isLongPress) {
+                // If long press action occurred, prevent default click behavior
+                // to avoid immediately triggering a click (opening cell)
+                if (e.cancelable) e.preventDefault();
+            }
         }
         
         // Use a wrapper for click on mobile to handle the "tap" part if touchstart didn't flag
