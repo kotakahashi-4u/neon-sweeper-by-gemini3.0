@@ -31,6 +31,10 @@
                 linear-gradient(0deg, rgba(0,243,255,0.03) 1px, transparent 1px),
                 linear-gradient(90deg, rgba(188,19,254,0.03) 1px, transparent 1px);
             background-size: 100% 100%, 40px 40px, 40px 40px;
+            /* Prevent text selection and callouts on mobile */
+            -webkit-user-select: none;
+            user-select: none;
+            -webkit-touch-callout: none;
         }
 
         /* 3D Board Container */
@@ -469,7 +473,6 @@
         let audioEnabled = true;
 
         /* --- Game Configuration --- */
-        // openBonus: 自動でマスが開いた時（連鎖）の1マスあたりの追加チャージ量
         const LEVELS = {
             beginner: { rows: 9, cols: 9, mines: 10, name: 'BEGINNER', chargeRate: 15, openBonus: 2 },
             intermediate: { rows: 16, cols: 16, mines: 40, name: 'INTERMEDIATE', chargeRate: 5, openBonus: 1 },
@@ -485,8 +488,13 @@
         let timerInterval;
         let timeElapsed = 0;
         let firstClick = true;
+        
+        // Touch interaction variables
         let longPressTimer;
-        let isLongPress = false; // Add state to track if long press occurred
+        let isLongPress = false;
+        let startX = 0;
+        let startY = 0;
+        let isScrolling = false;
         
         // New Features Variables
         let hackGauge = 0;
@@ -530,7 +538,7 @@
         }
 
         function resetGame() {
-            audio.init(); // Initialize audio context on first interaction if needed
+            audio.init(); 
             gameActive = true;
             firstClick = true;
             board = [];
@@ -558,7 +566,7 @@
             let cellSize = 30;
             if (window.innerWidth < 600) cellSize = 24; 
             if (cols > 20 && window.innerWidth < 800) cellSize = 22;
-            if (cols > 20 && window.innerWidth < 480) cellSize = 18; // Smaller for mobile hell mode
+            if (cols > 20 && window.innerWidth < 480) cellSize = 18; 
 
             document.documentElement.style.setProperty('--cell-size', `${cellSize}px`);
             
@@ -577,7 +585,7 @@
                     cell.addEventListener('mouseup', handleMouseUp);
                     cell.addEventListener('touchstart', handleTouchStart, {passive: false});
                     cell.addEventListener('touchend', handleTouchEnd);
-                    cell.addEventListener('touchmove', handleTouchMove, {passive: true}); // Add move handler
+                    cell.addEventListener('touchmove', handleTouchMove, {passive: false});
                     cell.addEventListener('contextmenu', (e) => {
                         e.preventDefault();
                         toggleFlag(r, c);
@@ -598,7 +606,6 @@
         /* --- Input Handling --- */
         function handleMouseDown(e) {
             if (!gameActive) return;
-            // Visual feedback logic here
         }
 
         function handleMouseUp(e) {
@@ -612,38 +619,60 @@
             }
         }
 
-        // Touch handling for mobile long-press
+        // --- Improved Mobile Touch Handling ---
         function handleTouchStart(e) {
             if (!gameActive) return;
-            isLongPress = false; // Reset long press state
-            const r = parseInt(e.target.closest('.cell').dataset.r);
-            const c = parseInt(e.target.closest('.cell').dataset.c);
+            isLongPress = false; 
+            isScrolling = false; // Reset scrolling state
+            
+            // Register initial touch point
+            const touch = e.touches[0];
+            startX = touch.clientX;
+            startY = touch.clientY;
+
+            const cell = e.target.closest('.cell');
+            if(!cell) return;
+            const r = parseInt(cell.dataset.r);
+            const c = parseInt(cell.dataset.c);
             
             longPressTimer = setTimeout(() => {
-                isLongPress = true; // Mark that long press action triggered
+                isLongPress = true; // Long press detected
                 toggleFlag(r, c);
-                // audio.sfxFlag(); // ToggleFlag inside calls sfxFlag
                 if (navigator.vibrate) navigator.vibrate(50);
-            }, 400); // 400ms for long press
+            }, 400); // 400ms for long press threshold
         }
 
         function handleTouchMove(e) {
-            // If finger moves, cancel long press
-            clearTimeout(longPressTimer);
+            if (!startX || !startY) return;
+            
+            const touch = e.touches[0];
+            const diffX = Math.abs(touch.clientX - startX);
+            const diffY = Math.abs(touch.clientY - startY);
+            
+            // Tolerance logic:
+            // Allow small movements (jitter) without cancelling the long press.
+            // Only cancel if movement exceeds 10px, interpreting it as a scroll/drag intent.
+            if (diffX > 10 || diffY > 10) {
+                clearTimeout(longPressTimer);
+                isScrolling = true; // Mark as scroll to prevent click on touchend
+            }
         }
 
         function handleTouchEnd(e) {
             clearTimeout(longPressTimer);
-            if (isLongPress) {
-                // If long press action occurred, prevent default click behavior
-                // to avoid immediately triggering a click (opening cell)
+            
+            // If it was a successful long press OR a scroll action, 
+            // prevent the default click behavior (which would open the cell).
+            if (isLongPress || isScrolling) {
                 if (e.cancelable) e.preventDefault();
             }
         }
         
-        // Use a wrapper for click on mobile to handle the "tap" part if touchstart didn't flag
+        // General click handler (Mouse and short Tap)
         boardEl.addEventListener('click', (e) => {
             if(!gameActive) return;
+            // If it was a long press or scroll, we've already prevented default, 
+            // but double check flags just in case.
             const cellEl = e.target.closest('.cell');
             if (!cellEl) return;
             const r = parseInt(cellEl.dataset.r);
