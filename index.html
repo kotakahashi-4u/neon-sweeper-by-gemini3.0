@@ -362,7 +362,16 @@
 
     <!-- Footer Controls -->
     <footer class="flex-none w-full z-10 p-4 pt-2 bg-gradient-to-t from-black via-black/90 to-transparent pointer-events-none">
-        <div class="flex flex-col items-center pointer-events-auto mb-4">
+        <div class="flex flex-col items-center pointer-events-auto mb-2">
+
+            <!-- Mobile Mode Toggle Button (Hidden on larger screens) -->
+            <div class="flex justify-center mb-4 md:hidden w-full">
+                <button id="mode-toggle" onclick="toggleMode()" class="glass-panel px-10 py-4 rounded-full flex items-center gap-4 transition-all duration-300 mode-btn-dig border shadow-lg transform active:scale-95">
+                    <i id="mode-icon" class="fas fa-hammer text-2xl"></i>
+                    <span id="mode-text" class="font-bold tracking-widest text-lg">DIG MODE</span>
+                </button>
+            </div>
+
              <!-- Skill Area -->
              <div class="flex flex-col items-center w-full max-w-md mb-2">
                 <div class="flex justify-between w-full px-1 mb-1">
@@ -376,14 +385,6 @@
                     <i class="fas fa-satellite-dish mr-2"></i>ACTIVATE RADAR
                 </button>
             </div>
-        </div>
-
-        <!-- Mobile Mode Toggle Button (Hidden on larger screens) -->
-        <div class="flex justify-center mb-4 md:hidden pointer-events-auto">
-            <button id="mode-toggle" onclick="toggleMode()" class="glass-panel px-8 py-3 rounded-full flex items-center gap-3 transition-all duration-300 mode-btn-dig border">
-                <i id="mode-icon" class="fas fa-hammer text-xl"></i>
-                <span id="mode-text" class="font-bold tracking-widest">DIG MODE</span>
-            </button>
         </div>
 
         <div class="flex flex-wrap justify-center gap-2 max-w-4xl mx-auto pointer-events-auto">
